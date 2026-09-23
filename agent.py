@@ -4,6 +4,9 @@ import os
 from openai import OpenAI
 import requests
 import json
+from pydantic import BaseModel, Field 
+from typing import Optional
+
 
 
 client = OpenAI(
@@ -80,6 +83,16 @@ SYSTEM_PROMPT="""
         
 
 """
+print("\n\n\n")
+
+# writing an output schema ----> this is how we want the structure to be outputted
+class MyOutputFormat(BaseModel):
+    step: str = Field(..., description="The ID of the step. Example: PLAN, OUTPUT, TOOL,etc")
+    content: Optional[str] = Field(None, description="The optional string content for the step")
+    tool: Optional[str] = Field(None, description="The ID of the tool to call.")
+    input: Optional[str]= Field(None, description="The input params for the tool")
+
+
 
 # Automating the processs
 message_history = [
@@ -96,9 +109,9 @@ while True:
 
 
       while True: 
-             response = client.chat.completions.create(
+             response = client.chat.completions.parse(
                  model="qwen3:0.6b",
-                response_format = {"type": "json_object"},
+                 response_format = MyOutputFormat,
                  messages = message_history
              )
              raw_result = response.choices[0].message.content
@@ -106,14 +119,15 @@ while True:
              # save the models response to history
              message_history.append({"role": "assistant", "content": raw_result})
              
-             parsed_result = json.loads(raw_result)
+             parsed_result = response.choices[0].message.parsed
 
-             if parsed_result.get("step") == "START":
-                 print("🔥", parsed_result.get("content"))
 
-             elif parsed_result.get("step") == "TOOL":
-                 tool_to_call = parsed_result.get("tool")
-                 tool_input = parsed_result.get("input")
+             if parsed_result.step == "START":
+                 print("🔥", parsed_result.content)
+
+             elif parsed_result.step == "TOOL":
+                 tool_to_call = parsed_result.tool
+                 tool_input = parsed_result.input
                  print(f"⚒️: {tool_to_call} ({tool_input})")
 
                  if tool_to_call not in available_tools:
@@ -131,15 +145,15 @@ while True:
 
                 })
 
-             elif parsed_result.get("step") == "PLAN":
-                 print("🧠", parsed_result.get("content"))
+             elif parsed_result.step == "PLAN":
+                 print("🧠", parsed_result.content)
 
-             elif parsed_result.get("step") == "OUTPUT":
-                 print("🤖", parsed_result.get("content"))
+             elif parsed_result.step == "OUTPUT":
+                 print("🤖", parsed_result.content)
                  break
 
              # asking the model to continue unless OUTPUT was reached
-             if parsed_result.get("step") != "OUTPUT":
+             if parsed_result.step != "OUTPUT":
                  message_history.append({"role": "user", "content": "Continue to the next step."})
                 
 
@@ -153,6 +167,10 @@ while True:
 # 🧠 Calling get_weather tool for Hyderabad, Bangalore, and Pune cities.
 # 🧠 Calling get_weather tool for Hyderabad, Bangalore, and Pune cities.
 # 🤖 The current weather in Hyderabad is sunny with a temperature of 32°C, while in Bangalore, it is cloudy with a temperature of 25°C, and in Pune, the weather is partly cloudy with a temperature of 28°C.
+
+        
+       
+
 
         
        
